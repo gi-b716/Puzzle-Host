@@ -1,0 +1,7 @@
+[project]
+name = "puzzlehost-puzzles"
+version = "0.1.0"
+description = "Puzzles module for PuzzleHost"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []

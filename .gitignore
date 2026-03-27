@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+
+node_modules/
+.DS_Store
+
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+Thumbs.db
+ehthumbs.db
+$RECYCLE.BIN/
+*.swp
+*.swo
