@@ -1,4 +1,4 @@
-# Puzzle Hub / Auth
+# Puzzle Host / Auth
 
 Auth 提供了一个身份认证中心，负责账号注册、登录与管理员授权。
 
@@ -12,5 +12,5 @@ Auth 提供了一个身份认证中心，负责账号注册、登录与管理员
 ```bash
 cd src/Auth
 uv sync
-uv run uvicorn main:app --reload
+uv run uvicorn app.main:app --reload
 ```

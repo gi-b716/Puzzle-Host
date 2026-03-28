@@ -1,4 +1,4 @@
-# Puzzle Hub / Puzzles
+# Puzzle Host / Puzzles
 
 Puzzles 提供了具体的解谜比赛服，负责题目展示、答题提交、排行榜以及组队逻辑。
 
