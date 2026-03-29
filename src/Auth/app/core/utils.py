@@ -8,6 +8,13 @@ from datetime import datetime, timezone, timedelta
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from jwt.algorithms import RSAAlgorithm
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlmodel import select
+
+from app.db import get_session
+from app.models import User
 
 PRIVATE_KEY_PATH = os.getenv("PRIVATE_KEY_PATH", "./data/private_key.pem")
 PUBLIC_KEY_PATH = os.getenv("PUBLIC_KEY_PATH", "./data/public_key.pem")
@@ -117,3 +124,52 @@ def create_token(data: dict, expires_delta: timedelta = DEFAULT_EXPIRATION_TIME)
         headers={"kid": CURRENT_KID},
     )
     return token
+
+
+security = HTTPBearer()
+
+
+def validate_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(token, PUBLIC_KEY, algorithms=["RS256"])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+async def get_user(
+    credentils: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_session),
+):
+    token = credentils.credentials
+
+    payload = validate_token(token)
+    username: str = payload.get("sub")
+    if username is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    result = await db.exec(select(User).where(User.username == username))
+    user = result.first()
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unknown user",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return user

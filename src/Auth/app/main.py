@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import init_db
-from app.api.auth import router as auth_router
+from app.routers import auth_router
 from app.core.utils import JWKS
 
 
@@ -30,7 +30,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth_router)
+app.include_router(auth_router, prefix="/auth")
 
 
 @app.get("/.well-known/jwks.json", tags=["public"])

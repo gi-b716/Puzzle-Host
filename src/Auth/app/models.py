@@ -17,6 +17,10 @@ class UserCreate(UserBase):
     password: str
 
 
+class UserResetPassword(UserCreate):
+    new_password: str
+
+
 class Token(SQLModel):
     access_token: str
     token_type: str
