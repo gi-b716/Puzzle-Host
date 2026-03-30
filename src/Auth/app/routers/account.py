@@ -9,8 +9,8 @@ from app.core.utils import get_password_hash, verify_password, create_token, get
 router = APIRouter(tags=["auth/account"])
 
 
-@router.post("/change-password", response_model=Token)
-async def change_password(
+@router.post("/reset-password", response_model=Token)
+async def reset_password(
     user: UserResetPassword,
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_user),
@@ -22,6 +22,7 @@ async def change_password(
         )
 
     current_user.password_hash = get_password_hash(user.new_password)
+    current_user.token_version += 1  # 增加 token_version 以使旧 Token 失效
     db.add(current_user)
     await db.commit()
 

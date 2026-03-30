@@ -4,7 +4,7 @@ from sqlmodel import select
 
 from app.db import get_session
 from app.models import User, UserCreate, Token
-from app.core.utils import get_password_hash, verify_password, create_token
+from app.core.utils import get_password_hash, verify_password, create_token, get_user
 
 from app.routers.account import router as account_router
 
@@ -29,7 +29,7 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_session)):
     db.add(new_user)
     await db.commit()
 
-    access_token = create_token({"sub": new_user.username})
+    access_token = create_token({"sub": new_user.username, "version": new_user.token_version})
     return Token(access_token=access_token, token_type="bearer")
 
 
@@ -46,5 +46,12 @@ async def login(user: UserCreate, db: AsyncSession = Depends(get_session)):
             detail="Invalid username or password",
         )
 
-    access_token = create_token({"sub": existing_user.username})
+    access_token = create_token({"sub": existing_user.username, "version": existing_user.token_version})
     return Token(access_token=access_token, token_type="bearer")
+
+
+@router.get("/validate")
+async def validate(
+    user: User = Depends(get_user), db: AsyncSession = Depends(get_session)
+):
+    return {"username": user.username}

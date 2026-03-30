@@ -129,22 +129,12 @@ def create_token(data: dict, expires_delta: timedelta = DEFAULT_EXPIRATION_TIME)
 security = HTTPBearer()
 
 
-def validate_token(token: str) -> dict:
-    try:
-        payload = jwt.decode(token, PUBLIC_KEY, algorithms=["RS256"])
-        return payload
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    except jwt.InvalidTokenError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+def _unauthorized(detail: str = "Unauthorized"):
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=detail,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 async def get_user(
@@ -153,23 +143,32 @@ async def get_user(
 ):
     token = credentils.credentials
 
-    payload = validate_token(token)
-    username: str = payload.get("sub")
-    if username is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    try:
+        payload = jwt.decode(token, PUBLIC_KEY, algorithms=["RS256"])
+    except jwt.ExpiredSignatureError:
+        raise _unauthorized("Token has expired")
+    except jwt.InvalidTokenError:
+        raise _unauthorized("Invalid token")
+
+    username = payload.get("sub")
+    if not isinstance(username, str) or not username:
+        raise _unauthorized("Invalid token payload")
 
     result = await db.exec(select(User).where(User.username == username))
     user = result.first()
 
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unknown user",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise _unauthorized("Unknown user")
+
+    token_version_payload = payload.get("version", 0)
+    try:
+        token_version_payload = int(token_version_payload)
+    except (ValueError, TypeError):
+        token_version_payload = 0
+
+    if user.token_version < token_version_payload:
+        raise _unauthorized("Token version is from the future, are you alien?")
+    elif user.token_version > token_version_payload:
+        raise _unauthorized("Token has been revoked")
 
     return user

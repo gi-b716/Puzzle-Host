@@ -1,4 +1,5 @@
 from typing import Optional
+from sqlalchemy import text
 from sqlmodel import SQLModel, Field
 
 
@@ -11,6 +12,7 @@ class User(UserBase, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     password_hash: str
+    token_version: int = Field(default=1, sa_column_kwargs={"server_default": text("1")})
 
 
 class UserCreate(UserBase):
