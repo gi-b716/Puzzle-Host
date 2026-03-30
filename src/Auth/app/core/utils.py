@@ -126,6 +126,14 @@ def create_token(data: dict, expires_delta: timedelta = DEFAULT_EXPIRATION_TIME)
     return token
 
 
+def create_user_token(
+    user: User, expires_delta: timedelta = DEFAULT_EXPIRATION_TIME
+) -> str:
+    return create_token(
+        {"sub": user.username, "version": user.token_version}, expires_delta
+    )
+
+
 security = HTTPBearer()
 
 

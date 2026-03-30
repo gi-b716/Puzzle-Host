@@ -3,17 +3,19 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 
 from app.db import get_session
-from app.models import User, UserCreate, Token
-from app.core.utils import get_password_hash, verify_password, create_token, get_user
-
-from app.routers.account import router as account_router
+from app.models import User, UserAuth, ResetPassword, Token
+from app.core.utils import (
+    get_password_hash,
+    verify_password,
+    create_user_token,
+    get_user,
+)
 
 router = APIRouter(tags=["auth"])
-router.include_router(account_router, prefix="/account")
 
 
 @router.post("/register", response_model=Token)
-async def register(user: UserCreate, db: AsyncSession = Depends(get_session)):
+async def register(user: UserAuth, db: AsyncSession = Depends(get_session)):
     result = await db.exec(select(User).where(User.username == user.username))
     existing_user = result.first()
 
@@ -29,12 +31,12 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_session)):
     db.add(new_user)
     await db.commit()
 
-    access_token = create_token({"sub": new_user.username, "version": new_user.token_version})
+    access_token = create_user_token(new_user)
     return Token(access_token=access_token, token_type="bearer")
 
 
 @router.post("/login", response_model=Token)
-async def login(user: UserCreate, db: AsyncSession = Depends(get_session)):
+async def login(user: UserAuth, db: AsyncSession = Depends(get_session)):
     result = await db.exec(select(User).where(User.username == user.username))
     existing_user = result.first()
 
@@ -46,12 +48,26 @@ async def login(user: UserCreate, db: AsyncSession = Depends(get_session)):
             detail="Invalid username or password",
         )
 
-    access_token = create_token({"sub": existing_user.username, "version": existing_user.token_version})
+    access_token = create_user_token(existing_user)
     return Token(access_token=access_token, token_type="bearer")
 
 
-@router.get("/validate")
-async def validate(
-    user: User = Depends(get_user), db: AsyncSession = Depends(get_session)
+@router.post("/reset_password", response_model=Token)
+async def reset_password(
+    user: ResetPassword,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_user),
 ):
-    return {"username": user.username}
+    if not verify_password(user.password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid current password",
+        )
+
+    current_user.password_hash = get_password_hash(user.new_password)
+    current_user.token_version += 1  # 增加 token_version 以使旧 Token 失效
+    db.add(current_user)
+    await db.commit()
+
+    access_token = create_user_token(current_user)
+    return Token(access_token=access_token, token_type="bearer")
