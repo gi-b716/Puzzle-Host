@@ -71,3 +71,18 @@ async def reset_password(
 
     access_token = create_user_token(current_user)
     return Token(access_token=access_token, token_type="bearer")
+
+
+@router.post("/refresh", response_model=Token)
+async def refresh_token(current_user: User = Depends(get_user)):
+    access_token = create_user_token(current_user)
+    return Token(access_token=access_token, token_type="bearer")
+
+
+@router.post("/revoke", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_tokens(
+    current_user: User = Depends(get_user), db: AsyncSession = Depends(get_session)
+):
+    current_user.token_version += 1
+    db.add(current_user)
+    await db.commit()
