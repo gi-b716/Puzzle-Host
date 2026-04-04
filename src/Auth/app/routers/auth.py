@@ -7,8 +7,9 @@ from app.models import User, UserAuth, ResetPassword, Token
 from app.core.utils import (
     get_password_hash,
     verify_password,
-    create_user_token,
-    get_user,
+    create_access_token,
+    create_refresh_token,
+    TokenValidator,
 )
 
 router = APIRouter(tags=["auth"])
@@ -31,8 +32,11 @@ async def register(user: UserAuth, db: AsyncSession = Depends(get_session)):
     db.add(new_user)
     await db.commit()
 
-    access_token = create_user_token(new_user)
-    return Token(access_token=access_token, token_type="bearer")
+    access_token = create_access_token(new_user)
+    refresh_token = create_refresh_token(new_user)
+    return Token(
+        access_token=access_token, refresh_token=refresh_token, token_type="bearer"
+    )
 
 
 @router.post("/login", response_model=Token)
@@ -48,15 +52,18 @@ async def login(user: UserAuth, db: AsyncSession = Depends(get_session)):
             detail="Invalid username or password",
         )
 
-    access_token = create_user_token(existing_user)
-    return Token(access_token=access_token, token_type="bearer")
+    access_token = create_access_token(existing_user)
+    refresh_token = create_refresh_token(existing_user)
+    return Token(
+        access_token=access_token, refresh_token=refresh_token, token_type="bearer"
+    )
 
 
 @router.post("/reset_password", response_model=Token)
 async def reset_password(
     user: ResetPassword,
     db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_user),
+    current_user: User = Depends(TokenValidator("access")),
 ):
     if not verify_password(user.password, current_user.password_hash):
         raise HTTPException(
@@ -69,19 +76,26 @@ async def reset_password(
     db.add(current_user)
     await db.commit()
 
-    access_token = create_user_token(current_user)
-    return Token(access_token=access_token, token_type="bearer")
+    access_token = create_access_token(current_user)
+    refresh_token = create_refresh_token(current_user)
+    return Token(
+        access_token=access_token, refresh_token=refresh_token, token_type="bearer"
+    )
 
 
 @router.post("/refresh", response_model=Token)
-async def refresh_token(current_user: User = Depends(get_user)):
-    access_token = create_user_token(current_user)
-    return Token(access_token=access_token, token_type="bearer")
+async def refresh_endpoint(current_user: User = Depends(TokenValidator("refresh"))):
+    access_token = create_access_token(current_user)
+    refresh_token = create_refresh_token(current_user)
+    return Token(
+        access_token=access_token, refresh_token=refresh_token, token_type="bearer"
+    )
 
 
 @router.post("/revoke", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_tokens(
-    current_user: User = Depends(get_user), db: AsyncSession = Depends(get_session)
+    current_user: User = Depends(TokenValidator("access")),
+    db: AsyncSession = Depends(get_session),
 ):
     current_user.token_version += 1
     db.add(current_user)

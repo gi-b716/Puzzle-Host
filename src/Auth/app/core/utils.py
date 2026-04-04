@@ -3,6 +3,7 @@ import jwt
 import bcrypt
 import hashlib
 import base64
+from typing import Literal
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from cryptography.hazmat.primitives import serialization
@@ -108,10 +109,11 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     )
 
 
-DEFAULT_EXPIRATION_TIME = timedelta(days=7)
+DEFAULT_ACCESS_EXPIRATION_TIME = timedelta(minutes=15)
+DEFAULT_REFRESH_EXPIRATION_TIME = timedelta(days=7)
 
 
-def create_token(data: dict, expires_delta: timedelta = DEFAULT_EXPIRATION_TIME) -> str:
+def create_token(data: dict, expires_delta: timedelta) -> str:
     to_encode = data.copy()
     now = datetime.now(timezone.utc)
     to_encode["iat"] = now
@@ -126,11 +128,18 @@ def create_token(data: dict, expires_delta: timedelta = DEFAULT_EXPIRATION_TIME)
     return token
 
 
-def create_user_token(
-    user: User, expires_delta: timedelta = DEFAULT_EXPIRATION_TIME
+def create_access_token(
+    user: User, expires_delta: timedelta = DEFAULT_ACCESS_EXPIRATION_TIME
+) -> str:
+    return create_token({"sub": user.username, "type": "access"}, expires_delta)
+
+
+def create_refresh_token(
+    user: User, expires_delta: timedelta = DEFAULT_REFRESH_EXPIRATION_TIME
 ) -> str:
     return create_token(
-        {"sub": user.username, "version": user.token_version}, expires_delta
+        {"sub": user.username, "version": user.token_version, "type": "refresh"},
+        expires_delta,
     )
 
 
@@ -145,38 +154,47 @@ def _unauthorized(detail: str = "Unauthorized"):
     )
 
 
-async def get_user(
-    credentils: HTTPAuthorizationCredentials = Depends(security),
-    db: AsyncSession = Depends(get_session),
-):
-    token = credentils.credentials
+class TokenValidator:
+    def __init__(self, token_type: Literal["access", "refresh"] = "access") -> None:
+        self.token_type = token_type
 
-    try:
-        payload = jwt.decode(token, PUBLIC_KEY, algorithms=["RS256"])
-    except jwt.ExpiredSignatureError:
-        raise _unauthorized("Token has expired")
-    except jwt.InvalidTokenError:
-        raise _unauthorized("Invalid token")
+    async def __call__(
+        self,
+        credentils: HTTPAuthorizationCredentials = Depends(security),
+        db: AsyncSession = Depends(get_session),
+    ) -> User:
+        token = credentils.credentials
 
-    username = payload.get("sub")
-    if not isinstance(username, str) or not username:
-        raise _unauthorized("Invalid token payload")
+        try:
+            payload = jwt.decode(token, PUBLIC_KEY, algorithms=["RS256"])
+        except jwt.ExpiredSignatureError:
+            raise _unauthorized("Token has expired")
+        except jwt.InvalidTokenError:
+            raise _unauthorized("Invalid token")
 
-    result = await db.exec(select(User).where(User.username == username))
-    user = result.first()
+        if payload.get("type") != self.token_type:
+            raise _unauthorized("Invalid token type")
 
-    if user is None:
-        raise _unauthorized("Unknown user")
+        username = payload.get("sub")
+        if not isinstance(username, str) or not username:
+            raise _unauthorized("Invalid token payload")
 
-    token_version_payload = payload.get("version", 0)
-    try:
-        token_version_payload = int(token_version_payload)
-    except (ValueError, TypeError):
-        token_version_payload = 0
+        result = await db.exec(select(User).where(User.username == username))
+        user = result.first()
 
-    if user.token_version < token_version_payload:
-        raise _unauthorized("Token version is from the future, are you alien?")
-    elif user.token_version > token_version_payload:
-        raise _unauthorized("Token has been revoked")
+        if user is None:
+            raise _unauthorized("Unknown user")
 
-    return user
+        if self.token_type == "refresh":
+            token_version_payload = payload.get("version", 0)
+            try:
+                token_version_payload = int(token_version_payload)
+            except (ValueError, TypeError):
+                token_version_payload = 0
+
+            if user.token_version < token_version_payload:
+                raise _unauthorized("Token version is from the future, are you alien?")
+            elif user.token_version > token_version_payload:
+                raise _unauthorized("Token has been revoked")
+
+        return user
